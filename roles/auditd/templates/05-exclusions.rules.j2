@@ -1,0 +1,28 @@
+{{ ansible_managed | comment }}
+# Exclusions
+{% for r in auditd_exclusion_rules %}
+{{ r }}
+{% endfor %}
+{% if (ansible_distribution == 'Ubuntu' and ansible_distribution_major_version|int >= 16) or (ansible_os_family == "RedHat" and ansible_distribution_major_version|int >= 7) %}
+{% for r in auditd_exclusion_rules2 %}
+{{ r }}
+{% endfor %}
+{% endif %}
+
+{% if (ansible_os_family == "Debian") %}
+# Debian family
+{% if ansible_userspace_bits == '64' %}
+{% for r in auditd_exclusion_rules_debian_b64 %}
+{{ r }}
+{% endfor %}
+{% endif %}
+{% endif %}
+
+{% if (ansible_os_family == "RedHat") %}
+# RedHat family
+{% if ansible_userspace_bits == '64' %}
+{% for r in auditd_exclusion_rules_redhat_b64 %}
+{{ r }}
+{% endfor %}
+{% endif %}
+{% endif %}

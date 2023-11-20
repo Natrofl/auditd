@@ -1,0 +1,62 @@
+---
+
+- name: Ensure rsyslog is present
+  ansible.builtin.package:
+    name: rsyslog
+    state: present
+  register: pkg_result
+  until: pkg_result is success
+
+- name: Gather package facts
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Get rsyslog version
+  ansible.builtin.set_fact:
+    rsyslog_v: "{{ ansible_facts.packages['rsyslog'][0]['version'] }}"
+
+- name: Debug | rsyslog version
+  ansible.builtin.debug:
+    var: rsyslog_v
+    verbosity: 1
+
+- name: Ensure audispd base directory exists
+  ansible.builtin.file:
+    dest: "{{ audisp_syslog_target | dirname }}"
+    state: directory
+    mode: '0755'
+    owner: "{{ syslog_user }}"
+    group: "{{ syslog_group | default('root') }}"
+  when:
+    - "'/var/log/' in audisp_syslog_target"
+    - audisp_syslog_target | dirname != '/var/log'
+
+- name: Setup rsyslog to send audisp logs to a specific target
+  ansible.builtin.template:
+    src: rsyslog-audispd.conf.j2
+    dest: /etc/rsyslog.d/30-audispd.conf
+    mode: '0644'
+    backup: "{{ auditd_backup | default(false) }}"
+    validate: 'rsyslogd -N2 -f %s'
+  notify:
+    - Restart rsyslog
+
+- name: Ensure audis syslog plugin is enabled
+  community.general.ini_file:
+    path: "{{ auditd_plugins }}/syslog.conf"
+    section: null
+    option: active
+    value: 'yes'
+    mode: '0640'
+    backup: "{{ auditd_backup | default(false) }}"
+  notify:
+    - Restart auditd
+    - Restart auditd - rhel7+
+
+# only if file, not if remote syslog
+- name: Debug | audisp_syslog_target
+  ansible.builtin.debug:
+    var: audisp_syslog_target
+- name: Import logrotate
+  ansible.builtin.import_tasks: logrotate.yml
+  when: "'/var/log/' in audisp_syslog_target"

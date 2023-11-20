@@ -1,0 +1,165 @@
+---
+
+osquery_process_auditing: false
+audisp_syslog_enable: true
+audisp_syslog_target: /var/log/audispd/audispd.log
+# audisp_syslog_target: @@remotesyslog
+
+auditd_grub_enable: false
+
+auditd_log_tmp: true
+auditd_log_etc: true
+## Attention! those four would generate lot of logs. alternatives: sysdig/falco, systemtap, osquery...
+auditd_log_all_execve: false
+auditd_log_all_socket: false
+auditd_log_all_connect: false
+auditd_rule_rootcmd_all: false
+auditd_sensitive_files:
+  - /etc/shadow
+  ## file must exist
+  # - /data/topsecret.data
+  ## web root?
+  - /var/www/
+auditd_log_binaries_exec:
+  - /usr/bin/perl
+  - /usr/bin/python
+  - /usr/bin/python3
+  - /usr/bin/ruby
+
+# This variable controls whether files not managed by this role will be purged
+# from the rules configuration directory
+auditd_manage_configuration_directory: true
+
+auditd_rules_templates:
+  - 01-start
+  - 05-exclusions
+  - 10-audit-self
+  - 40-base
+  - 43-module-load
+  - 50-cis_l2
+  - 60-neo23x0
+  - 70-rootcmd
+  - 71-nobodycmd
+  - 90-extra
+  - 91-extra-custom
+  - 99-end
+
+# load first
+# https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/6/html/security_guide/sec-audit_record_types
+auditd_exclusion_rules:
+  # - '-a always,exclude -F msgtype=CWD'  # needed for detections like omigod
+  # - '-a always,exclude -F msgtype=EOE'  # required by laurel
+  # - '-a always,exclude -F msgtype=PATH'
+  # - '-a always,exclude -F msgtype=PROCTITLE'
+  - '-a always,exclude -F msgtype=AVC'
+  - '-a always,exclude -F msgtype=CRYPTO_KEY_USER'
+  # cron jobs
+  - '-a never,user -F subj_type=crond_t'
+  - '-a never,exit -F subj_type=crond_t'
+  # VMWare tools
+  - '-a never,exit -F arch=b32 -S fork -F success=0 -F path=/usr/lib/vmware-tools -F subj_type=initrc_t -F exit=-2'
+  - '-a never,exit -F arch=b64 -S fork -F success=0 -F path=/usr/lib/vmware-tools -F subj_type=initrc_t -F exit=-2'
+  - '-a never,exit -F dir=/var/lock/lvm'
+  # High Volume Event Filter (especially on Linux Workstations)
+  - '-a never,exit -F arch=b32 -F dir=/dev/shm -k sharedmemaccess'
+  - '-a never,exit -F arch=b64 -F dir=/dev/shm -k sharedmemaccess'
+  - '-a never,exit -F arch=b32 -F dir=/var/lock/lvm -k locklvm'
+  - '-a never,exit -F arch=b64 -F dir=/var/lock/lvm -k locklvm'
+  ## FileBeat
+  # - '-a never,exit -F arch=b32 -F path=/opt/filebeat -k filebeat'
+  # - '-a never,exit -F arch=b64 -F path=/opt/filebeat -k filebeat'
+  # - '-a never,exit -F dir=/path/to/directory'
+  # - '-a never,exit -F path=/path/to/file'
+  # - '-a never,exit -F auid=<UID>'
+
+# This set use 'exe' filter which is available on more recent auditd (RHEL7.3+, Ubuntu Xenial+)
+auditd_exclusion_rules2:
+  # uncommon_syscall
+  - '-a never,exit -F arch=b64 -F uid=0 -F auid=4294967295 -S prctl -F exe=/usr/sbin/sshd'
+  - '-a never,exit -F arch=b64 -F uid=0 -F auid=4294967295 -S prctl -F exe=/usr/lib/openssh/sftp-server'
+  - '-a never,exit -F arch=b64 -S prctl -F exe=/lib/systemd/systemd-journald'
+  - '-a never,exit -F arch=b64 -S prctl -F exe=/lib/systemd/systemd-udevd'
+  - '-a never,exit -F arch=b64 -S prctl -F exe=/bin/systemctl'
+  # admin_user_home
+  - '-a never,exit -F arch=b64 -F dir=/home/ -F uid=0 -F auid=4294967295 -S lstat -F exe=/sbin/cgrulesengd'
+  - '-a never,exit -F arch=b64 -F dir=/home/ -F uid=0 -F auid=4294967295 -S lstat -S stat -S open -S inotify_add_watch -S openat -S newfstatat -F exe=/usr/bin/osqueryd'
+  - '-a never,exit -F arch=b64 -F dir=/home/ -F uid=0 -F auid=4294967295 -S newfstatat -F exe=/usr/bin/find'
+  - '-a never,exit -F arch=b64 -F dir=/home/ -F uid=0 -F auid=4294967295 -S lstat -F exe=/lib/systemd/systemd'
+  - '-a never,exit -F arch=b64 -F dir=/home/ -F uid=0 -F auid=0 -S lstat -F exe=/usr/bin/updatedb.mlocate'
+  - '-a never,exit -F arch=b64 -F dir=/home/ -F uid=0 -F auid=0 -S chdir -F exe=/usr/bin/updatedb.mlocate'
+  # unauthfileacess: setroubleshoot
+  - '-a never,exit -F arch=b64 -S open -F success=0 -F uid=996 -F auid=4294967295 -F exe=/usr/bin/rpm'
+  - '-a never,exit -F arch=b64 -S open -F success=0 -F uid=104 -F auid=4294967295 -F exe=/usr/sbin/rsyslogd -F dir=/var/log'
+  # specialfiles
+  - '-a never,exit -F arch=b64 -S mknod -F success=0 -F uid=996 -F auid=4294967295 -F exe=/usr/lib/systemd/systemd-logind'
+  # etcpasswd
+  - '-a never,exit -F arch=b64 -F path=/etc/shadow -F uid=0 -F auid=4294967295 -S open -F exe=/usr/sbin/crond'
+  - '-a never,exit -F arch=b64 -F path=/etc/shadow -F uid=0 -F auid=4294967295 -S open -F exe=/usr/sbin/sshd'
+  - '-a never,exit -F arch=b64 -F path=/etc/shadow -F uid=0 -F auid=4294967295 -S open -F exe=/usr/sbin/unix_chkpwd'
+  # rootcmd
+  - '-a never,exit -F arch=b64 -F uid=0 -F auid=4294967295 -S execve -F exe=/usr/sbin/sshd -F success=0'
+  - '-a never,exit -F arch=b64 -F uid=0 -F auid=4294967295 -S execve -F exe=/bin/sleep'
+  - '-a exit,never -F arch=b64 -F uid=0 -F auid=4294967295 -S execve -F exe=/usr/bin/env -F success=0'
+  - '-a never,exit -F arch=b64 -F uid=0 -F auid=0 -S execve -F exe=/usr/bin/env -F success=0'
+  - '-a never,exit -F arch=b64 -F uid=0 -F auid=4294967295 -S execve -F exe=/usr/bin/dirname -F success=0'
+  - '-a never,exit -F arch=b64 -F uid=0 -F auid=0 -S execve -F exe=/usr/bin/dirname -F success=0'
+
+auditd_exclusion_rules_debian_b64:
+  - '-a never,exit -F arch=b64 -F uid=0 -F auid=4294967295 -S execve -F exe=/usr/lib/sysstat/sadc'
+  # time-change
+  - '-a never,exit -F arch=b64 -F uid=111 -F auid=4294967295 -S adjtimex -F exe=/usr/sbin/ntpd -F success=0'
+  # tmp_write
+  - '-a never,exit -F arch=b64 -F uid=0 -F auid=4294967295 -S openat -S unlink -F exe=/usr/bin/apt-mark'
+  - '-a never,exit -F arch=b64 -F uid=65534 -F auid=65534 -S mkdir -F exe=/sbin/pam-tmpdir-helper'
+  # time-change
+  - '-a exit,never -F arch=b64 -F uid=111 -F auid=4294967295 -S adjtimex -F exe=/usr/sbin/ntpd -F success=0'
+  # sigkill
+  # FIXME!
+  - '-a exit,never -F arch=b64 -F uid=0 -F auid=4294967295 -S kill -F exe=/bin/dash -F success=0'
+  - '-a exit,never -F arch=b64 -F uid=0 -F auid=4294967295 -S kill -F exe=/lib/systemd/systemd -F success=0'
+auditd_exclusion_rules_redhat_b64:
+  - '-a never,exit -F arch=b64 -F uid=0 -F auid=4294967295 -S execve -F exe=/usr/lib64/sa/sadc'
+  - '-a never,exit -F arch=b64 -S adjtimex -F auid=unset -F uid=_chrony -F subj_type=chronyd_t'
+
+# load at the end
+auditd_extra_rules: []
+
+auditd_buffer_size: 32768
+auditd_failure_mode: 1
+## ATTENTION! 2 implies any config changes require a system reboot (man auditctl)
+auditd_enable_flag: 2
+# auditd_enable_flag: 1
+# Paths to ignore for suid/sgid files
+auditd_sugid_ignored_paths:
+  - /proc
+  - /snap
+  # lxc, docker
+  - /var/lib/docker
+  - /var/lib/lxd
+
+# auditd.conf(5)
+auditd_conf_lineinfile:
+  # rotate 10 times every 32MB. auditd does not support time rotation.
+  - { re: '^max_log_file = .*', l: 'max_log_file = 32' }
+  - { re: '^num_logs = .*', l: 'num_logs = 10' }
+  # avoid 'dispatch err (pipe full) event lost' - deprecated on RHEL8
+  - { re: '^disp_qos = .*', l: 'disp_qos = lossless' }
+
+auditd_set_loginuid_immutable: true
+
+auditd_reporting: true
+audispd_reporting_template: audispd_report.sh
+audispd_reporting_dest: /var/tmp
+audispd_logrotate_days: 10
+
+auditd_laurel_enable: false
+auditd_laurel_version: v0.5.1
+auditd_laurel_url: "https://github.com/threathunters-io/laurel/releases/download/{{ auditd_laurel_version }}/laurel-{{ auditd_laurel_version }}-x86_64-musl.tar.gz"
+auditd_laurel_checksum: 'sha256:1cee6962acb7bde4338a608a8544d9975b963abf106bfa80dc2dd72af925d271'
+auditd_laurel_user: '_laurel'
+auditd_laurel_config: laurel.toml.j2
+auditd_laurel_plugin: laurel.conf.j2
+# Rotate when log file reaches this size (in bytes) - must be big enough to let logrotate handle it
+auditd_laurel_rotatesize: 10000000000
+auditd_laurel_reporting_template: auditd_laurel_report.sh
+install_archives: /var/_install

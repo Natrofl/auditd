@@ -1,0 +1,43 @@
+---
+
+- name: Augenrules  # noqa no-changed-when
+  ansible.builtin.command: augenrules
+  when: augenrules_file.stat.exists
+
+- name: Restart auditd - suse
+  ansible.builtin.systemd:
+    name: auditd
+    state: restarted
+  when: >
+    not (ansible_virtualization_type is defined and
+          (ansible_virtualization_type == "lxc" or ansible_virtualization_type == "docker")
+        ) and ansible_os_family == "Suse"
+
+- name: Restart auditd
+  ansible.builtin.service:
+    name: auditd
+    state: restarted
+  when: >
+    not (ansible_virtualization_type is defined and
+          (ansible_virtualization_type == "lxc" or ansible_virtualization_type == "docker")
+        ) and
+    not (
+        (ansible_os_family == "RedHat" and ansible_distribution_major_version | int >= 7) or
+        (ansible_os_family == "Suse" )
+    )
+
+## https://groups.google.com/forum/#!topic/ansible-project/pv1h1Ne7nSk
+- name: Restart auditd - rhel7+
+  ansible.builtin.command: "service auditd restart"  # noqa command-instead-of-module no-changed-when
+  environment:
+    PATH: '/usr/sbin:/usr/bin:/sbin:/bin'
+  when: >
+    not (ansible_virtualization_type is defined and
+          (ansible_virtualization_type == "lxc" or ansible_virtualization_type == "docker")
+        ) and
+    (ansible_os_family == "RedHat" and ansible_distribution_major_version | int >= 7)
+
+- name: Restart rsyslog
+  ansible.builtin.service:
+    name: rsyslog
+    state: restarted
